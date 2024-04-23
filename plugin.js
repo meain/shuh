@@ -1,3 +1,5 @@
+let audioFor = {};
+
 function playAudio(blob) {
     return new Promise((resolve, reject) => {
         const url = URL.createObjectURL(blob);
@@ -10,34 +12,53 @@ function playAudio(blob) {
     });
 }
 
-function tts(text) {
-    return new Promise((resolve, reject) => {
+async function tts(text) {
+    try {
         // send the text to localhost:3333 and get audio back to be
         // played via browser. The request is supposed to be a POST
         // request with "text" as the key
-        fetch("http://localhost:3333/audio", {
+        const response = await fetch("http://localhost:3333/audio", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ text }),
-        })
-            .then((response) => response.blob())
-            .then((blob) => {
-                console.log("Fetched", text);
-                resolve(blob);
-            })
-            .catch(reject);
-    });
+        });
+        const blob = await response.blob();
+        console.log("Fetched", text.substring(0, 13));
+        return blob;
+    } catch (error) {
+        throw error;
+    }
 }
 
 function waitFor(arr, index) {
     return new Promise((resovlve, reject) => {
         if (arr[index] == undefined) {
             setTimeout(() => {
-                console.log("Waiting for", index);
+                console.log("Waiting for", index.substring(0, 13));
                 waitFor(arr, index).then(resovlve);
-            }, 100);
+            }, 1000);
         } else {
             resovlve();
+        }
+    });
+}
+
+function fetchAudio(elems) {
+    return new Promise(async (res, rej) => {
+        const count = elems.length;
+
+        for (let i = 0; i < count; i++) {
+            let e = elems[i];
+
+            let text = e.textContent;
+
+            if (text.length === 0) {
+                continue;
+            }
+
+            console.log("Fetching", text.substring(0, 13));
+            let audio = await tts(text);
+            audioFor[text] = audio;
         }
     });
 }
@@ -47,18 +68,12 @@ async function processItems() {
     const elems = Array.from(all).filter((e) => e.textContent.length > 0);
     const count = elems.length;
 
-    let audioFor = {};
+    fetchAudio(elems);
 
     for (let i = 0; i < count; i++) {
         let e = elems[i];
-        let en = elems[i + 1];
 
         let text = e.textContent;
-        let textn = en.textContent;
-
-        if (text.length === 0) {
-            continue;
-        }
 
         // highlight
         orig = e.style.backgroundColor;
@@ -69,19 +84,11 @@ async function processItems() {
             inline: "nearest",
         });
 
-        tts(textn).then((audio) => {
-            audioFor[textn] = audio;
-        });
-
         if (audioFor[text] == undefined) {
-            if (i === 0) {
-                audioFor[text] = await tts(text);
-            } else {
-                await waitFor(audioFor, text);
-            }
+            await waitFor(audioFor, text);
         }
 
-        console.log(text);
+        console.log("Playing", text.substring(0, 13));
         await playAudio(audioFor[text]);
 
         // unhighlight
