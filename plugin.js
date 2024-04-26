@@ -90,7 +90,7 @@ async function tts(text) {
             body: JSON.stringify({ text }),
         });
         const blob = await response.blob();
-        console.log("Fetched", text.substring(0, 13));
+        console.log("Fetched", text.substring(0, 33));
         return blob;
     } catch (error) {
         throw error;
@@ -118,13 +118,12 @@ function fetchAudio(elems) {
         for (let i = 0; i < count; i++) {
             let e = elems[i];
 
-            let text = e.textContent;
+            let text = e.textContent.trim();
 
             if (text.length === 0) {
                 continue;
             }
 
-            console.log("Fetching", text.substring(0, 13));
             audioFor[text] = await tts(text);
         }
     });
@@ -135,7 +134,7 @@ async function processItems(elems) {
 
     for (let i = 0; i < count; i++) {
         let e = elems[i];
-        let text = e.textContent;
+        let text = e.textContent.trim();
 
         // highlight
         orig = e.style.backgroundColor;
@@ -171,7 +170,7 @@ async function processItems(elems) {
 }
 
 const all = document.querySelectorAll("p,ol,ul,pre,h1,h2,h3,h4,h5,h6");
-const elems = Array.from(all).filter((e) => e.textContent.length > 0);
+const elems = Array.from(all).filter((e) => e.textContent.trim().length > 0);
 
 fetchAudio(elems);
 createAudioPlayer();
