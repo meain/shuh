@@ -4,6 +4,7 @@ let skip = 0;
 let currentTrack = undefined;
 let player = undefined;
 let playerText = undefined;
+let fetchedText = undefined;
 
 // Create a div at the start of the bottom of the body, always visible
 // with an audio player and return the handle to the player.
@@ -31,6 +32,8 @@ function createAudioPlayer() {
     playerText = document.createElement("span");
     playerText.textContent = "Fetching audio...";
 
+    fetchedText = document.createElement("span");
+
     // Add control like next and prev and some text for currently
     // playing track and a progress bar
     const div = document.createElement("div");
@@ -38,16 +41,20 @@ function createAudioPlayer() {
     idiv.appendChild(prev);
     idiv.appendChild(next);
     idiv.appendChild(playerText);
+    idiv.appendChild(fetchedText);
     div.appendChild(idiv);
     div.appendChild(player);
 
     player.style.width = "100%";
     idiv.style.width = "100%";
-    idiv.style.fontSize = "13px"; // TODO: rethink
+    idiv.style.fontSize = "0.6em";
+    idiv.style.display = "flex";
 
     next.style.margin = "5px";
     prev.style.margin = "5px";
     playerText.style.margin = "5px";
+    playerText.style.flex = "1";
+    fetchedText.style.margin = "5px";
 
     div.style.position = "fixed";
     div.style.bottom = "0";
@@ -89,9 +96,8 @@ async function tts(text) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ text }),
         });
-        const blob = await response.blob();
-        console.log("Fetched", text.substring(0, 33));
-        return blob;
+        // console.log("Fetching", text);
+        return await response.blob();
     } catch (error) {
         throw error;
     }
@@ -125,6 +131,7 @@ function fetchAudio(elems) {
             }
 
             audioFor[text] = await tts(text);
+            fetchedText.textContent = "Fetched (" + i + "/" + count + ")";
         }
     });
 }
@@ -150,7 +157,7 @@ async function processItems(elems) {
         }
 
         playerText.textContent =
-            "Playing section(" +
+            "Playing(" +
             i +
             "/" +
             count +
