@@ -176,8 +176,35 @@ async function processItems(elems) {
     }
 }
 
-const all = document.querySelectorAll("p,ol,ul,pre,h1,h2,h3,h4,h5,h6");
-const elems = Array.from(all).filter((e) => e.textContent.trim().length > 0);
+function stripUnwanted(elems) {
+    const unwated = ["NAV", "ASIDE"];
+    const filtered = [];
+
+    // check 10 levels deep
+    for (let el of elems) {
+        let parent = el;
+        let i = 0;
+        let skip = false;
+        while (parent.tagName != "BODY" && i < 10) {
+            if (unwated.includes(parent.tagName)) {
+                skip = true;
+                break;
+            }
+
+            parent = parent.parentElement;
+            i++;
+        }
+
+        if (skip) continue;
+        filtered.push(el);
+    }
+
+    return filtered;
+}
+
+const all = document.querySelectorAll("p,li,h1,h2,h3,h4,h5,h6");
+let elems = Array.from(all).filter((e) => e.textContent.trim().length > 0);
+elems = stripUnwanted(elems);
 
 fetchAudio(elems);
 createAudioPlayer();
