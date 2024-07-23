@@ -1,0 +1,15 @@
+shuh
+
+It is super hacky, but it works.
+
+Usage
+-----
+
+0. Install piper(https://github.com/rhasspy/piper)
+1. Run go package: `go run main.go`
+2. Copy paste content of plugin.js into js consone
+
+TODO
+----
+
+- [ ] Remove hardcoded paths
