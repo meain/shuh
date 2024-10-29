@@ -40,9 +40,12 @@ func getAudio(w http.ResponseWriter, r *http.Request) {
 	// run piper cli
 	errorStream := bytes.Buffer{}
 	audio := bytes.Buffer{}
-	piperCli := exec.Command("piper", "-m", "/home/meain/.cache/piper/en_US-ryan-high.onnx", "-f", "-")
+	piperCli := exec.Command("piper", "-m", "/Users/meain/.cache/piper/en_US-ryan-high.onnx", "-f", "-")
 
-	piperCli.Stdin = strings.NewReader(bd.Text)
+	// escape newlines
+	text := strings.ReplaceAll(bd.Text, "\n", " ") // just winging it
+
+	piperCli.Stdin = strings.NewReader(text)
 	piperCli.Stderr = &errorStream
 	piperCli.Stdout = &audio
 
@@ -63,6 +66,7 @@ func getAudio(w http.ResponseWriter, r *http.Request) {
 func main() {
 	http.HandleFunc("/audio", getAudio)
 
+	fmt.Println("starting server on :3333")
 	err := http.ListenAndServe(":3333", nil)
 	if err != nil {
 		panic(err)
