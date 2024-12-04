@@ -96,25 +96,29 @@ async function tts(text) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ text }),
         });
-        // console.log("Fetching", text);
         return await response.blob();
     } catch (error) {
         throw error;
     }
 }
 
-function waitFor(arr, index) {
-    return new Promise((resovlve, reject) => {
-        if (arr[index] == undefined) {
+function waitFor(arr, text) {
+    return new Promise((resolve, reject) => {
+        if (arr[text] == undefined) {
             setTimeout(() => {
                 playerText.textContent =
-                    "Waiting for audio: " + index.substring(0, 33) + "...";
-                waitFor(arr, index).then(resovlve);
+                    "Waiting for audio: " + text.substring(0, 33) + "...";
+                waitFor(arr, text).then(resolve);
             }, 1000);
         } else {
-            resovlve();
+            resolve();
         }
     });
+}
+
+function splitIntoPeriodSentences(text) {
+    // Split text into sentences, keeping the periods
+    return text.match(/[^.]+\./g) || [];
 }
 
 function fetchAudio(elems) {
@@ -124,15 +128,20 @@ function fetchAudio(elems) {
         for (let i = 0; i < count; i++) {
             let e = elems[i];
 
-            let text = e.textContent.trim();
+            // Split the text into sentences by periods
+            const sentences = splitIntoPeriodSentences(e.textContent.trim());
 
-            if (text.length === 0) {
-                continue;
+            for (const sentence of sentences) {
+                if (sentence.trim().length === 0) {
+                    continue;
+                }
+
+                // Fetch audio for each sentence separately
+                audioFor[sentence] = await tts(sentence);
+                fetchedText.textContent = `Fetched (${i}/${count})`;
             }
-
-            audioFor[text] = await tts(text);
-            fetchedText.textContent = "Fetched (" + i + "/" + count + ")";
         }
+        res();
     });
 }
 
@@ -141,43 +150,48 @@ async function processItems(elems) {
 
     for (let i = 0; i < count; i++) {
         let e = elems[i];
-        let text = e.textContent.trim();
+        // Split the text into sentences by periods
+        const sentences = splitIntoPeriodSentences(e.textContent.trim());
 
-        // highlight
-        orig = e.style.backgroundColor;
-        e.style.backgroundColor = "#f1f1f1";
-        e.scrollIntoView({
-            behavior: "smooth",
-            block: "center",
-            inline: "nearest",
-        });
+        for (const sentence of sentences) {
+            if (sentence.trim().length === 0) {
+                continue;
+            }
 
-        if (audioFor[text] == undefined) {
-            await waitFor(audioFor, text);
+            // Unhighlight all elements first
+            elems.forEach(elem => {
+                elem.style.backgroundColor = elem.getAttribute('data-orig-bg') || '';
+            });
+
+            // Highlight current element
+            const orig = e.style.backgroundColor;
+            e.setAttribute('data-orig-bg', orig);
+            e.style.backgroundColor = "#f1f1f1";
+            e.scrollIntoView({
+                behavior: "smooth",
+                block: "center",
+                inline: "nearest",
+            });
+
+            if (audioFor[sentence] == undefined) {
+                await waitFor(audioFor, sentence);
+            }
+
+            playerText.textContent =
+                `Playing(${i}/${count}): ${sentence.substring(0, 33)}...`;
+            await playAudio(audioFor[sentence]);
+
+            if (skip == -1) {
+                i -= 2;
+                skip = 0;
+                break;
+            }
         }
-
-        playerText.textContent =
-            "Playing(" +
-            i +
-            "/" +
-            count +
-            "): " +
-            text.substring(0, 33) +
-            "...";
-        await playAudio(audioFor[text]);
-
-        if (skip == -1) {
-            i -= 2;
-            skip = 0;
-        }
-
-        // unhighlight
-        e.style.backgroundColor = orig;
     }
 }
 
 function stripUnwanted(elems) {
-    const unwated = ["NAV", "ASIDE"];
+    const unwanted = ["NAV", "ASIDE"];
     const filtered = [];
 
     // check 10 levels deep
@@ -186,7 +200,7 @@ function stripUnwanted(elems) {
         let i = 0;
         let skip = false;
         while (parent.tagName != "BODY" && i < 10) {
-            if (unwated.includes(parent.tagName)) {
+            if (unwanted.includes(parent.tagName)) {
                 skip = true;
                 break;
             }
