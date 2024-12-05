@@ -17,4 +17,6 @@ Usage
 TODO
 ----
 
-- [ ] Remove hardcoded paths
+- Remove hardcoded paths
+- Fix issue with nested lists repeating
+- Option to enable/disable auto scroll

@@ -1,23 +1,34 @@
 const pluginStyle = `
 .audio-player {
+all: initial; /* remove all other styling */
 position: fixed;
 display: flex;
 justify-content: center;
 align-items: center;
 bottom: 0px;
 width: 100%;
-height: 40px;
-padding: 1px 2px;
+padding: 5px;
 background: #000;
 z-index: 1000;
+font-size: 1em;
 }
 .audio-player button {
-margin: 3px;
+margin: 1px 3px;
 padding: 0 2px;
+border: none;
+border-radius: 4px;
+background-color: #f0f0f0;
+color: #333;
+font-size: 14px;
+cursor: pointer;
+transition: background-color 0.3s;
+}
+
+.audio-player button:hover {
+background-color: #e0e0e0;
 }
 
 .audio-player span {
-font-size: 0.8rem;
 color: white;
 flex: 1;
 padding: 0 5px;
@@ -30,6 +41,8 @@ text-overflow: ellipsis;
 background-color: #f1f1f1;
 color: #000000;
 border-radius: 4px;
+border-top: 1px solid black;
+border-bottom: 1px solid black;
 }
 `;
 
@@ -93,7 +106,7 @@ class AudioPlayer {
         div.classList.add("audio-player");
 
         this.info = document.createElement("span");
-        this.info.textContent = "Initializing player..."
+        this.info.textContent = "Initializing player...";
 
         const play = this.createButton("pause");
         const prev = this.createButton("prev");
@@ -113,6 +126,8 @@ class AudioPlayer {
 
         next.onclick = () => {
             this.player.onended();
+            play.textContent = "pause";
+            this.playing = true;
         };
 
         prev.onclick = () => {
@@ -122,6 +137,8 @@ class AudioPlayer {
 
             this.playerPosition -= 2; // double minus so that the loop with increment by one
             this.player.onended();
+            play.textContent = "pause";
+            this.playing = true;
         };
 
         div.appendChild(play);
@@ -195,7 +212,7 @@ class AudioPlayer {
         while (true) {
             await this.waitFor();
             await sleep(100); // a tiny break between lines
-            this.highlightBlock()
+            this.highlightBlock();
             await this.playCurrent();
             this.playerPosition += 1;
         }
@@ -215,4 +232,4 @@ class AudioPlayer {
     }
 }
 
-new AudioPlayer().play()
+new AudioPlayer().play();
