@@ -12,6 +12,7 @@ background: #000;
 z-index: 1000;
 font-size: 1em;
 }
+
 .audio-player button {
 margin: 1px 3px;
 padding: 0 2px;
@@ -23,7 +24,6 @@ font-size: 14px;
 cursor: pointer;
 transition: background-color 0.3s;
 }
-
 .audio-player button:hover {
 background-color: #e0e0e0;
 }
@@ -35,6 +35,7 @@ padding: 0 5px;
 white-space: nowrap;
 overflow: hidden;
 text-overflow: ellipsis;
+cursor: pointer;
 }
 
 .shuh-highlight {
@@ -175,16 +176,43 @@ class AudioPlayer {
         }
     }
 
+    isVisible(element) {
+        const rect = element.getBoundingClientRect();
+        return (
+            rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.left >= 0
+        );
+    }
+
     highlightBlock() {
         const { b } = this.blobs[this.playerPosition];
         const block = this.blocks[b];
 
         // Remove the class from all elements
-        Object.values(this.blocks).forEach((b) =>
-            b.classList.remove("shuh-highlight"),
-        );
+        let prevObjVisible = false;
+        Object.values(this.blocks).forEach((b) => {
+            if (b.classList.contains("shuh-highlight")) {
+                b.classList.remove("shuh-highlight");
+                prevObjVisible = this.isVisible(b);
+            }
+        });
 
         block.classList.add("shuh-highlight");
+        if (prevObjVisible) {
+            block.scrollIntoView({
+                behavior: "smooth",
+                block: "center",
+                inline: "nearest",
+            });
+        }
+
+        // Click on info to scroll to the block
+        this.info.onclick = () => {
+            block.scrollIntoView({
+                behavior: "smooth",
+                block: "center",
+                inline: "nearest",
+            });
+        };
     }
 
     playCurrent() {
