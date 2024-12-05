@@ -2,12 +2,17 @@ shuh
 
 It is super hacky, but it works.
 
+Installation
+------------
+
+- Install piper(https://github.com/rhasspy/piper)
+- Create a bookmarklet using https://chimurai.github.io/bookmarklet/ with the code from script.js
+
 Usage
 -----
 
-0. Install piper(https://github.com/rhasspy/piper)
-1. Run go package: `go run main.go`
-2. Copy paste content of plugin.js into js consone
+- Run go package: `go run main.go` as a service in bakground
+- Click on the bookmarklet to start speaking
 
 TODO
 ----
