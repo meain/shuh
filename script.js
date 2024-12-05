@@ -125,8 +125,8 @@ class AudioPlayer {
         };
 
         div.appendChild(play);
-        div.appendChild(next);
         div.appendChild(prev);
+        div.appendChild(next);
         div.appendChild(this.info);
 
         return div;
