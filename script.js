@@ -183,6 +183,15 @@ class AudioPlayer {
         );
     }
 
+    scrollIntoView(block) {
+        // https://developer.mozilla.org/en-US/docs/Web/API/Element/scrollIntoView
+        block.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+            inline: "nearest",
+        });
+    }
+
     highlightBlock() {
         const { b } = this.blobs[this.playerPosition];
         const block = this.blocks[b];
@@ -197,22 +206,10 @@ class AudioPlayer {
         });
 
         block.classList.add("shuh-highlight");
-        if (prevObjVisible) {
-            block.scrollIntoView({
-                behavior: "smooth",
-                block: "center",
-                inline: "nearest",
-            });
-        }
+        if (prevObjVisible) this.scrollIntoView(block);
 
         // Click on info to scroll to the block
-        this.info.onclick = () => {
-            block.scrollIntoView({
-                behavior: "smooth",
-                block: "center",
-                inline: "nearest",
-            });
-        };
+        this.info.onclick = () => this.scrollIntoView(block);
     }
 
     playCurrent() {
