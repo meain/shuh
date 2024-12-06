@@ -18,6 +18,5 @@ TODO
 ----
 
 - Remove hardcoded paths
-- Fix issue with nested lists repeating
 - Trim out links (or transform to something better like "link to GitHub")
 - Is a selection is present. Read just that
