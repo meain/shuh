@@ -150,20 +150,9 @@ class AudioPlayer {
         return div;
     }
 
-    // This ensures that we are not getting text context of any of the
-    // child element. Prevents us from repeating stuff in nested
-    // lists.
-    getDirectTextContent(element) {
-        return Array.from(element.childNodes)
-            .filter((node) => node.nodeType === Node.TEXT_NODE)
-            .map((node) => node.nodeValue.trim())
-            .join("");
-    }
-
-
     async fetchAudio() {
         for (let b in this.blocks) {
-            const text = this.getDirectTextContent(this.blocks[b]);
+            const text = this.blocks[b].textContent;
             let chunks = text.split(". ");
             chunks = chunks.filter((e) => e.trim().length > 0);
 
@@ -257,7 +246,22 @@ class AudioPlayer {
     play() {
         const all = document.querySelectorAll("p,li,h1,h2,h3,h4,h5,h6");
         let elems = stripUnwanted(Array.from(all));
-        elems = elems.filter((e) => this.getDirectTextContent(e).trim().length > 0);
+        elems = elems.filter((e) => e.textContent.trim().length > 0);
+
+        // Remove any child elements whose parents are already in the
+        // list. This avoids the script from reading the same thing
+        // twice.
+        elems = elems.filter((e) => {
+            // check if any parent of e is already in elems
+            let parent = e.parentNode;
+            while (parent) {
+                if (elems.includes(parent)) {
+                    return false;
+                }
+                parent = parent.parentNode;
+            }
+            return true;
+        });
 
         this.blocks = elems;
         this.fetchAudio().then(() => {
