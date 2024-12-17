@@ -17,6 +17,8 @@ Usage
 TODO
 ----
 
-- Remove hardcoded paths
+- When splitting by lines, if the previous line is less that 5 chars, join with next line (Helps with list numberings)
+- Remove hardcoded paths (auto download model)
 - Trim out links (or transform to something better like "link to GitHub")
 - Is a selection is present. Read just that
+- We could use llms to summarize code blocks

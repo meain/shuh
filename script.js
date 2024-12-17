@@ -185,11 +185,20 @@ class AudioPlayer {
 
     scrollIntoView(block) {
         // https://developer.mozilla.org/en-US/docs/Web/API/Element/scrollIntoView
-        block.scrollIntoView({
-            behavior: "smooth",
-            block: "center",
-            inline: "nearest",
-        });
+        const rect = block.getBoundingClientRect();
+        const isVisible =
+            rect.top >= 0 &&
+            rect.bottom + 500 <= // +500 to account for the bar below
+                (window.innerHeight || document.documentElement.clientHeight);
+
+        // Scroll only if the element is not visible
+        if (!isVisible) {
+            block.scrollIntoView({
+                behavior: "smooth",
+                block: "center",
+                inline: "nearest",
+            });
+        }
     }
 
     highlightBlock() {
@@ -267,6 +276,8 @@ class AudioPlayer {
         this.fetchAudio().then(() => {
             console.log("All audio segments fetched");
         });
+
+        this.scrollIntoView(elems[0]); // scroll to the first item
 
         this.playAudio(); // this never returns
     }
