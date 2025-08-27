@@ -153,12 +153,31 @@ class AudioPlayer {
     async fetchAudio() {
         for (let b in this.blocks) {
             const text = this.blocks[b].textContent;
-            let chunks = text.split(". ");
+            // Split on sentence separators, keeping the punctuation with each sentence
+            let chunks = text.split(/(?<=[.!?])\s+/);
             chunks = chunks.filter((e) => e.trim().length > 0);
+            
+            // Join small chunks together
+            const mergedChunks = [];
+            let currentChunk = "";
+            
+            for (const chunk of chunks) {
+                if (currentChunk.length === 0) {
+                    currentChunk = chunk.trim();
+                } else if (currentChunk.length < 20 || chunk.length < 20) {
+                    currentChunk += " " + chunk.trim();
+                } else {
+                    mergedChunks.push(currentChunk);
+                    currentChunk = chunk.trim();
+                }
+            }
+            
+            if (currentChunk.length > 0) {
+                mergedChunks.push(currentChunk);
+            }
 
-            for (let c in chunks) {
-                const chunk = chunks[c];
-                const blob = await tts(chunks[c]);
+            for (const chunk of mergedChunks) {
+                const blob = await tts(chunk);
                 const data = { b, chunk, blob };
                 this.blobs.push(data);
             }
