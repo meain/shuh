@@ -3,11 +3,13 @@
 // TTS document.
 
 (() => {
-  // The action-click path injects this script every time; bail if we already
-  // mounted on this page.
-  if (window.__shuhMounted) {
-    window.dispatchEvent(new CustomEvent("shuh:toggle"));
-    return;
+  // The action-click path injects this script every time the user clicks the
+  // toolbar icon — and also after the unpacked add-on is reloaded, in which
+  // case any prior Player instance was bound to the OLD extension's
+  // chrome.runtime and is now dead. Always tear down any previous mount and
+  // create a fresh one.
+  if (window.__shuhPlayer) {
+    try { window.__shuhPlayer.destroy(); } catch (e) { /* old context dead */ }
   }
   window.__shuhMounted = true;
 
@@ -181,11 +183,27 @@
       this.speedMin = 0.5;
       this.speedMax = 4.0;
       this.speedStep = 0.5;
+      // Auto-scroll-to-active-block. The user can break out of follow mode
+      // by scrolling manually; clicking the player text re-enables it.
+      this.followMode = true;
+      this.lastProgrammaticScrollAt = 0;
 
       this.injectStyle();
       this.buildUI();
       this.bindShortcuts();
+      this.bindScrollWatch();
       this.loadSettings().then(() => this.start());
+    }
+
+    bindScrollWatch() {
+      // Any scroll within ~800ms of one of our scrollIntoView() calls is
+      // assumed to be that smooth scroll animating. Anything else means
+      // the user scrolled — stop following.
+      this.scrollHandler = () => {
+        if (Date.now() - this.lastProgrammaticScrollAt < 800) return;
+        this.followMode = false;
+      };
+      window.addEventListener("scroll", this.scrollHandler, { passive: true, capture: true });
     }
 
     injectStyle() {
@@ -206,11 +224,7 @@
           <button class="shuh-btn" data-act="prev" title="Previous (←)">${icons.prev}</button>
           <button class="shuh-btn" data-act="play" data-primary="true" title="Play/Pause (space)">${icons.pause}</button>
           <button class="shuh-btn" data-act="next" title="Next (→)">${icons.next}</button>
-          <label class="shuh-speed" title="Reading speed">
-            <input class="shuh-speed-range" type="range"
-                   min="0.5" max="4" step="0.5" value="1" data-speed-range />
-            <span class="shuh-speed-value" data-speed-value>1.0×</span>
-          </label>
+          <button class="shuh-speed" data-act="speed" title="Reading speed" data-speed-btn>1.0×</button>
           <div class="shuh-text">
             <div class="shuh-line" data-line>Initialising…</div>
             <div class="shuh-meta" data-meta>—</div>
@@ -228,8 +242,22 @@
       this.statusEl = root.querySelector("[data-status]");
       this.toastEl = root.querySelector("[data-toast]");
       this.playBtn = root.querySelector('[data-act="play"]');
-      this.speedRange = root.querySelector("[data-speed-range]");
-      this.speedValue = root.querySelector("[data-speed-value]");
+      this.speedBtn = root.querySelector("[data-speed-btn]");
+
+      // Build the speed popup once and park it on document.body — the player
+      // root has overflow:hidden so a child popup would get clipped.
+      this.speedPopup = document.createElement("div");
+      this.speedPopup.className = "shuh-speed-popup";
+      this.speedPopup.hidden = true;
+      this.speedPopup.innerHTML = `
+        <div class="shuh-speed-popup-value" data-speed-popup-value>1.0×</div>
+        <input class="shuh-speed-range" type="range"
+               min="0.5" max="4" step="0.5" value="1"
+               orient="vertical" data-speed-range />
+      `;
+      document.body.appendChild(this.speedPopup);
+      this.speedRange = this.speedPopup.querySelector("[data-speed-range]");
+      this.speedPopupValue = this.speedPopup.querySelector("[data-speed-popup-value]");
 
       root.addEventListener("click", (e) => {
         const btn = e.target.closest("[data-act]");
@@ -238,6 +266,7 @@
         if (act === "play") this.toggle();
         else if (act === "prev") this.prev();
         else if (act === "next") this.next();
+        else if (act === "speed") this.toggleSpeedPopup();
         else if (act === "close") this.destroy();
       });
 
@@ -249,10 +278,19 @@
         chrome.storage.sync.set({ speed: v }).catch(() => {});
       });
 
-      // Clicking the line/meta area re-centers the currently reading block —
-      // the auto-scroll-on-new-sentence is intentionally disabled so the
-      // reader doesn't fight the user when they scroll away.
+      // Close the speed popup when clicking elsewhere.
+      this.outsideSpeedClick = (e) => {
+        if (this.speedPopup.hidden) return;
+        if (this.speedPopup.contains(e.target)) return;
+        if (this.speedBtn.contains(e.target)) return;
+        this.closeSpeedPopup();
+      };
+      document.addEventListener("click", this.outsideSpeedClick, true);
+
+      // Clicking the line/meta area re-enables follow-mode and re-centers
+      // on the currently reading block.
       root.querySelector(".shuh-text").addEventListener("click", () => {
+        this.followMode = true;
         const current = this.queue[this.cursor];
         if (current) this.scrollToBlock(this.blocks[current.blockIdx]);
       });
@@ -295,10 +333,42 @@
 
     updateSpeedBtn() {
       const v = Number(this.settings.speed);
-      if (this.speedValue) this.speedValue.textContent = `${v.toFixed(1)}×`;
+      const text = `${v.toFixed(1)}×`;
+      if (this.speedBtn) this.speedBtn.textContent = text;
+      if (this.speedPopupValue) this.speedPopupValue.textContent = text;
       if (this.speedRange && Number(this.speedRange.value) !== v) {
         this.speedRange.value = String(v);
       }
+    }
+
+    toggleSpeedPopup() {
+      if (this.speedPopup.hidden) this.openSpeedPopup();
+      else this.closeSpeedPopup();
+    }
+
+    openSpeedPopup() {
+      // The CSS keeps the popup invisible (opacity:0) by default, so we can
+      // safely flip `hidden`, measure, and reposition before triggering the
+      // [data-open="true"] fade-in. No visible flash at top-left.
+      this.speedPopup.hidden = false;
+      const r = this.speedBtn.getBoundingClientRect();
+      const pop = this.speedPopup.getBoundingClientRect();
+      this.speedPopup.style.left = `${r.left + r.width / 2}px`;
+      this.speedPopup.style.top = `${Math.max(8, r.top - pop.height - 10)}px`;
+      requestAnimationFrame(() => {
+        this.speedPopup.dataset.open = "true";
+        this.speedBtn.dataset.open = "true";
+      });
+    }
+
+    closeSpeedPopup() {
+      this.speedPopup.dataset.open = "false";
+      this.speedBtn.dataset.open = "false";
+      // Wait for fade-out before hiding, so the transition shows.
+      clearTimeout(this._speedHideT);
+      this._speedHideT = setTimeout(() => {
+        this.speedPopup.hidden = true;
+      }, 150);
     }
 
     setStatus(text) {
@@ -496,20 +566,21 @@
       }
       if (block?.parentNode) {
         block.classList.add("shuh-block-active");
-        // Intentionally no auto-scroll: don't fight the user. They can click
-        // the player's text area to re-center on the current sentence.
+        // Follow as we read, but only if the user hasn't scrolled away.
+        if (this.followMode) this.scrollToBlock(block);
       }
     }
 
     scrollToBlock(block) {
       if (!block?.getBoundingClientRect) return;
       const rect = block.getBoundingClientRect();
-      const onScreen =
-        rect.top >= 60 &&
-        rect.bottom + 80 <= (window.innerHeight || document.documentElement.clientHeight);
-      if (!onScreen) {
-        block.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
+      const vh = window.innerHeight || document.documentElement.clientHeight;
+      const onScreen = rect.top >= 60 && rect.bottom + 80 <= vh;
+      if (onScreen) return;
+      // Mark so our own smooth-scroll events don't get mis-attributed to
+      // the user and flip follow-mode off.
+      this.lastProgrammaticScrollAt = Date.now();
+      block.scrollIntoView({ behavior: "smooth", block: "center" });
     }
 
     updateLine(item, idx) {
@@ -578,7 +649,11 @@
         el.classList.remove("shuh-block-active");
       }
       window.removeEventListener("keydown", this.shortcutHandler);
+      window.removeEventListener("scroll", this.scrollHandler, true);
+      document.removeEventListener("click", this.outsideSpeedClick, true);
       chrome.runtime.onMessage.removeListener(this.messageHandler);
+      clearTimeout(this._speedHideT);
+      this.speedPopup?.remove();
       this.root.remove();
       window.__shuhMounted = false;
       // Best-effort: tell the background to drop pending work. (In-flight
