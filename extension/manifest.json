@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "shuh",
+  "version": "0.2.0",
+  "description": "Read webpages out loud with on-device neural TTS (Kokoro).",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["<all_urls>"],
+  "action": {
+    "default_title": "shuh — read this page",
+    "default_popup": "popup/popup.html"
+  },
+  "background": {
+    "page": "background/background.html"
+  },
+  "commands": {
+    "toggle-reader": {
+      "suggested_key": { "default": "Alt+Shift+R" },
+      "description": "Toggle the shuh reader on the current tab"
+    },
+    "play-pause": {
+      "suggested_key": { "default": "Alt+Shift+Space" },
+      "description": "Play/pause"
+    }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "content/player.css",
+        "lib/*"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://huggingface.co https://*.huggingface.co https://*.hf.co https://*.xethub.hf.co https://cas-bridge.xethub.hf.co"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "shuh@meain.local",
+      "strict_min_version": "115.0"
+    }
+  }
+}
