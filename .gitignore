@@ -1,5 +1,10 @@
 node_modules/
-extension/lib/kokoro.bundle.js
-extension/lib/kokoro.bundle.js.map
+
+# All extension/lib/ contents are produced by `npm run build` from
+# node_modules — don't commit, regenerate after clone.
+extension/lib/tts.bundle.js
+extension/lib/tts.bundle.js.map
 extension/lib/ort/
+extension/lib/piper/
+
 .DS_Store

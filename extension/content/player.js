@@ -173,7 +173,7 @@
       this.playing = false;
       this.destroyed = false;
       this.currentResolver = null;
-      this.settings = { voice: "af_heart", speed: 1.0 };
+      this.settings = { voice: "en_US-amy-low", speed: 1.0 };
       this.activeWordSpan = null;
       this.wordRaf = 0;
       this.statusText = "";

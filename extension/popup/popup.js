@@ -7,21 +7,23 @@ const modelSection = $("model-status");
 const modelProg = $("model-progress");
 const modelDetail = $("model-detail");
 
-const DEFAULTS = { voice: "af_heart", speed: 1.0 };
+const DEFAULTS = { voice: "en_US-amy-low", speed: 1.0 };
 
-// Hardcoded voice list — used as a fallback before the model has been loaded
-// at least once. After first load, the offscreen doc reports the real list.
+// Small curated subset shown by default — the full Piper catalogue has 100+
+// voices and is fetched lazily from the background script.
 const FALLBACK_VOICES = [
-  { id: "af_heart", name: "Heart (en-US, female)" },
-  { id: "af_bella", name: "Bella (en-US, female)" },
-  { id: "af_nicole", name: "Nicole (en-US, female)" },
-  { id: "af_sarah", name: "Sarah (en-US, female)" },
-  { id: "am_adam", name: "Adam (en-US, male)" },
-  { id: "am_michael", name: "Michael (en-US, male)" },
-  { id: "bf_emma", name: "Emma (en-GB, female)" },
-  { id: "bf_isabella", name: "Isabella (en-GB, female)" },
-  { id: "bm_george", name: "George (en-GB, male)" },
-  { id: "bm_lewis", name: "Lewis (en-GB, male)" },
+  { id: "en_US-amy-low",       name: "Amy — en-US (low, ~25 MB)" },
+  { id: "en_US-amy-medium",    name: "Amy — en-US (medium, ~60 MB)" },
+  { id: "en_US-ryan-low",      name: "Ryan — en-US (low, ~25 MB)" },
+  { id: "en_US-ryan-medium",   name: "Ryan — en-US (medium, ~60 MB)" },
+  { id: "en_US-ryan-high",     name: "Ryan — en-US (high, ~115 MB)" },
+  { id: "en_US-lessac-low",    name: "Lessac — en-US (low)" },
+  { id: "en_US-lessac-medium", name: "Lessac — en-US (medium)" },
+  { id: "en_US-libritts-high", name: "LibriTTS — en-US (high)" },
+  { id: "en_GB-alan-low",      name: "Alan — en-GB (low)" },
+  { id: "en_GB-alan-medium",   name: "Alan — en-GB (medium)" },
+  { id: "en_GB-alba-medium",   name: "Alba — en-GB (medium)" },
+  { id: "en_GB-cori-medium",   name: "Cori — en-GB (medium)" },
 ];
 
 function populateVoices(voices) {
