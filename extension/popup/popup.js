@@ -41,7 +41,7 @@ async function init() {
   const stored = await chrome.storage.sync.get(DEFAULTS);
   voiceSel.value = stored.voice;
   speedInp.value = stored.speed;
-  speedVal.textContent = `${Number(stored.speed).toFixed(2)}x`;
+  speedVal.textContent = `${Number(stored.speed).toFixed(1)}×`;
 }
 
 voiceSel.addEventListener("change", () => {
@@ -49,7 +49,7 @@ voiceSel.addEventListener("change", () => {
 });
 
 speedInp.addEventListener("input", () => {
-  speedVal.textContent = `${Number(speedInp.value).toFixed(2)}x`;
+  speedVal.textContent = `${Number(speedInp.value).toFixed(1)}×`;
 });
 speedInp.addEventListener("change", () => {
   chrome.storage.sync.set({ speed: Number(speedInp.value) });

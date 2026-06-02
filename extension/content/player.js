@@ -177,7 +177,10 @@
       this.activeWordSpan = null;
       this.wordRaf = 0;
       this.statusText = "";
-      this.speedSteps = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+      // Slider range/step — 0.5× to 4× in 0.5 increments.
+      this.speedMin = 0.5;
+      this.speedMax = 4.0;
+      this.speedStep = 0.5;
 
       this.injectStyle();
       this.buildUI();
@@ -203,7 +206,11 @@
           <button class="shuh-btn" data-act="prev" title="Previous (←)">${icons.prev}</button>
           <button class="shuh-btn" data-act="play" data-primary="true" title="Play/Pause (space)">${icons.pause}</button>
           <button class="shuh-btn" data-act="next" title="Next (→)">${icons.next}</button>
-          <button class="shuh-speed" data-act="speed" title="Reading speed">1.00×</button>
+          <label class="shuh-speed" title="Reading speed">
+            <input class="shuh-speed-range" type="range"
+                   min="0.5" max="4" step="0.5" value="1" data-speed-range />
+            <span class="shuh-speed-value" data-speed-value>1.0×</span>
+          </label>
           <div class="shuh-text">
             <div class="shuh-line" data-line>Initialising…</div>
             <div class="shuh-meta" data-meta>—</div>
@@ -221,7 +228,8 @@
       this.statusEl = root.querySelector("[data-status]");
       this.toastEl = root.querySelector("[data-toast]");
       this.playBtn = root.querySelector('[data-act="play"]');
-      this.speedBtn = root.querySelector('[data-act="speed"]');
+      this.speedRange = root.querySelector("[data-speed-range]");
+      this.speedValue = root.querySelector("[data-speed-value]");
 
       root.addEventListener("click", (e) => {
         const btn = e.target.closest("[data-act]");
@@ -230,10 +238,20 @@
         if (act === "play") this.toggle();
         else if (act === "prev") this.prev();
         else if (act === "next") this.next();
-        else if (act === "speed") this.cycleSpeed();
         else if (act === "close") this.destroy();
       });
 
+      this.speedRange.addEventListener("input", () => {
+        const v = Number(this.speedRange.value);
+        this.settings.speed = v;
+        this.audio.playbackRate = v;
+        this.updateSpeedBtn();
+        chrome.storage.sync.set({ speed: v }).catch(() => {});
+      });
+
+      // Clicking the line/meta area re-centers the currently reading block —
+      // the auto-scroll-on-new-sentence is intentionally disabled so the
+      // reader doesn't fight the user when they scroll away.
       root.querySelector(".shuh-text").addEventListener("click", () => {
         const current = this.queue[this.cursor];
         if (current) this.scrollToBlock(this.blocks[current.blockIdx]);
@@ -276,20 +294,11 @@
     }
 
     updateSpeedBtn() {
-      if (this.speedBtn) {
-        this.speedBtn.textContent = `${Number(this.settings.speed).toFixed(2)}×`;
+      const v = Number(this.settings.speed);
+      if (this.speedValue) this.speedValue.textContent = `${v.toFixed(1)}×`;
+      if (this.speedRange && Number(this.speedRange.value) !== v) {
+        this.speedRange.value = String(v);
       }
-    }
-
-    cycleSpeed() {
-      const current = Number(this.settings.speed);
-      const idx = this.speedSteps.findIndex((s) => Math.abs(s - current) < 0.01);
-      const next = this.speedSteps[(idx + 1) % this.speedSteps.length];
-      this.settings.speed = next;
-      chrome.storage.sync.set({ speed: next }).catch(() => {});
-      this.updateSpeedBtn();
-      // Apply to whatever's playing right now — takes effect this instant.
-      this.audio.playbackRate = next;
     }
 
     setStatus(text) {
@@ -487,7 +496,8 @@
       }
       if (block?.parentNode) {
         block.classList.add("shuh-block-active");
-        this.scrollToBlock(block);
+        // Intentionally no auto-scroll: don't fight the user. They can click
+        // the player's text area to re-center on the current sentence.
       }
     }
 

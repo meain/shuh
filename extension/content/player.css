@@ -41,7 +41,7 @@
 .shuh-progress-bar {
   height: 100%;
   width: 0%;
-  background: linear-gradient(90deg, #6366f1, #a855f7);
+  background: linear-gradient(90deg, #4f46e5, #06b6d4);
   transition: width 240ms ease;
 }
 
@@ -104,24 +104,56 @@
   white-space: nowrap;
 }
 
+/* Speed control — slider + numeric readout, packed into a pill. */
 .shuh-speed {
-  all: unset;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  gap: 8px;
   height: 28px;
   padding: 0 10px;
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.08);
+  transition: background 120ms ease;
+}
+.shuh-speed:hover { background: rgba(255, 255, 255, 0.12); }
+.shuh-speed-value {
   color: #e5e7eb;
   font-size: 11.5px;
   font-variant-numeric: tabular-nums;
   font-weight: 500;
-  cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
+  min-width: 32px;
+  text-align: right;
 }
-.shuh-speed:hover { background: rgba(255, 255, 255, 0.16); color: #fff; }
-.shuh-speed:active { transform: scale(0.95); }
+.shuh-speed-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 96px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 2px;
+  cursor: pointer;
+  margin: 0;
+}
+.shuh-speed-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+.shuh-speed-range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
 
 .shuh-toast {
   position: absolute;
@@ -141,18 +173,19 @@
 }
 .shuh-toast[data-show="true"] { opacity: 1; }
 
-/* Highlight currently reading block on the host page. */
+/* Highlight currently reading block on the host page. Uses box-shadow +
+ * background only — no border, no padding change — so the page never
+ * reflows when the highlight moves. */
 .shuh-block-active {
-  background: linear-gradient(90deg, rgba(99, 102, 241, 0.08), rgba(168, 85, 247, 0.08));
-  border-left: 3px solid #818cf8;
-  padding-left: 10px !important;
+  background: linear-gradient(90deg, rgba(79, 70, 229, 0.10), rgba(6, 182, 212, 0.10));
+  box-shadow: inset 3px 0 0 #4f46e5;
   border-radius: 4px;
   transition: background 200ms ease;
 }
 
 /* Per-word highlight, when timestamps are available. */
 .shuh-word-active {
-  background: rgba(129, 140, 248, 0.28);
+  background: rgba(79, 70, 229, 0.25);
   border-radius: 3px;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
