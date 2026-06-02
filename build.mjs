@@ -39,17 +39,43 @@ for (const name of ortNeeded) {
   if (existsSync(src)) await copyFile(src, path.join(ortOut, name));
 }
 
-// ── Patch vits-web's CDN URLs ─────────────────────────────────────────────
-// vits-web's predict() bakes CDN URLs as module-scope constants. We rewrite
-// them on-load so they resolve to our vendored copies via `import.meta.url`
-// (which esbuild resolves to the final bundle URL — chrome-extension://…).
+// ── Patch vits-web's CDN URLs + session lifetime ──────────────────────────
+// 1. vits-web's predict() bakes CDN URLs as module-scope constants. We rewrite
+//    them on-load so they resolve to our vendored copies via `import.meta.url`
+//    (which esbuild resolves to the final bundle URL — moz-extension://…).
+// 2. vits-web also leaks a ~63 MB onnxruntime InferenceSession on every
+//    predict() call (never calls .release()). After 2–3 sentences the WASM
+//    heap fills up and ORT throws "failed to allocate a buffer of size …".
+//    We patch in a per-voice session cache to fix the leak.
+
+const sessionCachePrelude = `
+// Injected by shuh build — caches the onnxruntime InferenceSession across
+// predict() calls so we don't leak ~63MB per sentence.
+let __shuh_session = null;
+let __shuh_voice = null;
+async function __shuh_getOrCreateSession(ort, blob, voiceId) {
+  if (__shuh_voice === voiceId && __shuh_session) return __shuh_session;
+  if (__shuh_session) {
+    try { await __shuh_session.release(); }
+    catch (err) { console.warn("[shuh] session.release() failed", err); }
+    __shuh_session = null;
+    __shuh_voice = null;
+  }
+  __shuh_session = await ort.InferenceSession.create(await blob.arrayBuffer());
+  __shuh_voice = voiceId;
+  return __shuh_session;
+}
+`;
+
 const vitsPatchPlugin = {
-  name: "patch-vits-cdn-urls",
+  name: "patch-vits-web",
   setup(build) {
     build.onLoad(
       { filter: /node_modules\/@diffusionstudio\/vits-web\/dist\/vits-web\.js$/ },
       async (args) => {
         let contents = await readFile(args.path, "utf8");
+
+        // (1) CDN URLs → local extension paths.
         contents = contents.replace(
           '"https://cdnjs.cloudflare.com/ajax/libs/onnxruntime-web/1.18.0/"',
           'new URL("./ort/", import.meta.url).href',
@@ -58,6 +84,23 @@ const vitsPatchPlugin = {
           '"https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize"',
           'new URL("./piper/piper_phonemize", import.meta.url).href',
         );
+
+        // (2) Cache the InferenceSession. The minified source has:
+        //     y = await _.InferenceSession.create(await k.arrayBuffer())
+        // where _ is onnxruntime-web, k is the model Blob, and e.voiceId is
+        // the voice. Pinned to vits-web 1.0.3 — bump warily.
+        const sessionCreatePattern =
+          "await _.InferenceSession.create(await k.arrayBuffer())";
+        const sessionCreateReplacement =
+          "await __shuh_getOrCreateSession(_, k, e.voiceId)";
+        if (!contents.includes(sessionCreatePattern)) {
+          throw new Error(
+            "build: vits-web session-cache patch did not match — vits-web minified shape changed?",
+          );
+        }
+        contents = contents.replace(sessionCreatePattern, sessionCreateReplacement);
+
+        contents = sessionCachePrelude + contents;
         return { contents, loader: "js" };
       },
     );
