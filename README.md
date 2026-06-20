@@ -4,6 +4,8 @@ A browser extension that reads webpages out loud using on-device neural TTS
 (Piper, via `@diffusionstudio/vits-web`). No server, no API keys — the model
 runs in the browser via WebAssembly.
 
+![Screenshot](https://github.com/user-attachments/assets/b3c91794-5c10-4194-a5b1-76c5e969bd2a)
+
 ## Features
 
 - **Modern floating player** — frosted glass, progress bar, in-line speed
