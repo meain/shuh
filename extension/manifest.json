@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "shuh",
   "version": "0.2.0",
-  "description": "Read webpages out loud with on-device neural TTS (Kokoro).",
+  "description": "Read webpages out loud with on-device neural TTS (Piper).",
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": ["<all_urls>"],
   "action": {
@@ -50,7 +50,10 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "shuh@meain.local",
-      "strict_min_version": "115.0"
+      "strict_min_version": "115.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
     }
   }
 }

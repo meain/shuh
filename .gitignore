@@ -8,3 +8,4 @@ extension/lib/ort/
 extension/lib/piper/
 
 .DS_Store
+dist/

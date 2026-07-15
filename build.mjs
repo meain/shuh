@@ -27,12 +27,13 @@ await mkdir(ortOut, { recursive: true });
 // ORT 1.18 bundled with vits-web — use those exact files so the wasm
 // version matches what the JS expects.
 const ortSrc = "node_modules/@diffusionstudio/vits-web/node_modules/onnxruntime-web/dist";
-// ORT picks one of these at runtime based on the browser. We ship the two
-// SIMD variants (any modern CPU supports SIMD) and skip the non-SIMD and
-// WebGPU-JS-execution-provider variants to keep the package small.
+// ORT picks a wasm file at runtime based on `self.crossOriginIsolated`.
+// Extension pages (Firefox and Chrome alike) aren't cross-origin isolated
+// unless the extension opts into COOP/COEP, which this one doesn't — so
+// ORT always forces numThreads=1 and never touches the threaded variant.
+// Only ship the single-threaded SIMD build.
 const ortNeeded = [
-  "ort-wasm-simd.wasm",          // SIMD, single thread (fallback)
-  "ort-wasm-simd-threaded.wasm", // SIMD + threading (preferred)
+  "ort-wasm-simd.wasm", // SIMD, single thread — the only variant ORT can use here
 ];
 for (const name of ortNeeded) {
   const src = path.join(ortSrc, name);
