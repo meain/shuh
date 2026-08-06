@@ -480,6 +480,7 @@
     async waitFor(i) {
       while (
         !this.destroyed &&
+        this.cursor === i &&
         this.queue[i] &&
         !this.queue[i].rawWav &&
         !this.queue[i]._error
@@ -500,6 +501,10 @@
           await this.waitFor(idx);
         }
         if (this.destroyed) return;
+        // The user skipped past `idx` (next/prev) while we were waiting on
+        // its synthesis — don't play it, just re-enter the loop at whatever
+        // the cursor points to now.
+        if (this.cursor !== idx) continue;
         if (this.queue[idx]._error) {
           this.toast(`error: ${this.queue[idx]._error}`);
           this.cursor += 1;
@@ -517,14 +522,25 @@
       this.playing = false;
     }
 
+    // Immediately reflect `idx` in the UI (highlight, line text, progress)
+    // regardless of whether its audio has finished synthesising yet — used
+    // both by playOne (once audio is ready to actually play) and by
+    // skipTo (so next/prev feel instant even mid-synthesis).
+    previewAt(idx) {
+      const item = this.queue[idx];
+      if (!item) return;
+      const block = this.blocks[item.blockIdx];
+      this.highlightBlock(block);
+      this.updateLine(item, idx);
+      this.updateProgress(idx);
+    }
+
     playOne(idx) {
       return new Promise((resolve) => {
         const item = this.queue[idx];
         const block = this.blocks[item.blockIdx];
 
-        this.highlightBlock(block);
-        this.updateLine(item, idx);
-        this.updateProgress(idx);
+        this.previewAt(idx);
 
         // Per-word highlighting setup (only if we have word timings and the
         // block lives in the host page — selection-mode blocks are synthetic).
@@ -651,25 +667,38 @@
     }
 
     next() {
-      this.audio.pause();
-      this.clearWordHighlight();
-      cancelAnimationFrame(this.wordRaf);
-      // Trigger onended → loop advances cursor.
-      this.audio.onended?.();
+      const nextIdx = this.cursor + 1;
+      if (nextIdx > this.queue.length) return;
+      this.skipTo(nextIdx);
     }
 
     prev() {
       if (this.cursor === 0) return;
-      this.audio.pause();
-      this.clearWordHighlight();
+      this.skipTo(this.cursor - 1);
+    }
+
+    // Jump straight to `idx`, whether or not its audio (or the audio for
+    // whatever is currently playing/loading) is ready yet. Bails out of any
+    // in-flight wait for the old position immediately — playLoop notices the
+    // cursor moved (see waitFor/playLoop) and re-enters at the new one, only
+    // then prioritising that item's synthesis. The UI (highlight/line/
+    // progress) updates right away regardless of load state.
+    skipTo(idx) {
       cancelAnimationFrame(this.wordRaf);
-      // playLoop only auto-advances when cursor === idx after playOne resolves;
-      // decrement now so the "advance" becomes a no-op and the loop replays the
-      // previous item.
-      this.cursor = Math.max(0, this.cursor - 1);
-      const item = this.queue[this.cursor];
-      if (item && !item.rawWav) this.prefetch(this.cursor);
-      this.audio.onended?.();
+      this.clearWordHighlight();
+      this.audio.pause();
+      this.audio.onended = null;
+      const resolveCurrent = this.currentResolver;
+      this.currentResolver = null;
+      this.cursor = idx;
+      this.previewAt(idx);
+      if (idx < this.queue.length) this.prefetch(idx);
+      // If audio for the old position had already started (playOne was
+      // mid-flight), resolve it now so playLoop's await unblocks and it can
+      // re-enter the loop at the new cursor. If we were still waiting on
+      // synthesis instead, there's nothing to resolve — waitFor() notices
+      // the cursor changed on its next poll and returns on its own.
+      resolveCurrent?.();
     }
 
     destroy() {
