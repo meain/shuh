@@ -67,9 +67,12 @@ async function synth({ text, voice }) {
   }
   const blob = await predict({ text, voiceId });
   const wav = await blob.arrayBuffer();
-  // Piper voice configs all use 16kHz or 22.05kHz — vits-web already encoded
-  // a proper RIFF header, so we just pass the buffer through. sample rate is
-  // embedded in the WAV header; the <audio> element handles it.
+  // vits-web encodes a bare WAV with zero trailing silence (44-byte header,
+  // mono 16-bit PCM, data ends right on the last sample). The content
+  // script pads this with speed-scaled trailing silence right before
+  // playback — see padTrailingSilence() in player.js — since the right
+  // amount depends on whatever playback speed is active at that moment,
+  // which can change after this response is cached.
   return { wav, sampleRate: null, words: null };
 }
 

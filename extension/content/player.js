@@ -160,6 +160,41 @@
     });
   }
 
+  // ─── tail-silence padding ───────────────────────────────────────────────────
+
+  // vits-web encodes a bare WAV with zero trailing silence (44-byte header,
+  // mono 16-bit PCM, data ends right on the last sample). The <audio>
+  // element's playbackRate time-stretch (preservesPitch keeps this on the
+  // WSOLA/OLA path rather than naive resampling) needs a lookahead past the
+  // last real sample to reconstruct it; with nothing there, it runs off the
+  // end of the buffer and clips the final syllable — or, at higher rates,
+  // more than one. That lookahead is spent out of *source* audio before
+  // playbackRate stretches it, so the source-time pad needed to cover a
+  // given amount of real playback time scales with the rate: a pad that's
+  // enough at 1x is nowhere near enough at 3x.
+  function padMsForSpeed(speed) {
+    return Math.min(1500, Math.max(200, Math.round(300 * speed)));
+  }
+
+  function padTrailingSilence(buffer, ms) {
+    const view = new DataView(buffer);
+    const channels = view.getUint16(22, true);
+    const sampleRate = view.getUint32(24, true);
+    const bitsPerSample = view.getUint16(34, true);
+    const bytesPerSample = bitsPerSample / 8;
+    const dataSize = view.getUint32(40, true);
+    const silenceBytes = Math.round((sampleRate * ms) / 1000) * channels * bytesPerSample;
+
+    const padded = new ArrayBuffer(buffer.byteLength + silenceBytes);
+    new Uint8Array(padded).set(new Uint8Array(buffer), 0);
+    // Silence bytes are already zero from ArrayBuffer initialization.
+
+    const paddedView = new DataView(padded);
+    paddedView.setUint32(4, padded.byteLength - 8, true); // RIFF chunk size
+    paddedView.setUint32(40, dataSize + silenceBytes, true); // data chunk size
+    return padded;
+  }
+
   // ─── player ────────────────────────────────────────────────────────────────
 
   class Player {
@@ -415,10 +450,14 @@
     // Kick off synthesis for queue index `i` without blocking.
     // Always synth at 1.0× — playback speed is applied via audio.playbackRate
     // so it can change instantly without re-synthesising prefetched chunks.
+    // We cache the *raw*, unpadded WAV here — padding is applied later, in
+    // playOne(), against whatever speed is active at the moment of playback
+    // (see padTrailingSilence() below for why it has to happen there and
+    // not here).
     prefetch(i) {
       if (this.destroyed) return;
       const item = this.queue[i];
-      if (!item || item.audioUrl || item._fetching) return;
+      if (!item || item.rawWav || item._fetching) return;
       item._fetching = true;
       send("synth", {
         text: item.text,
@@ -427,8 +466,7 @@
       })
         .then((res) => {
           if (this.destroyed) return;
-          const blob = new Blob([res.wav], { type: "audio/wav" });
-          item.audioUrl = URL.createObjectURL(blob);
+          item.rawWav = res.wav;
           item.words = res.words;
           item._fetching = false;
         })
@@ -443,7 +481,7 @@
       while (
         !this.destroyed &&
         this.queue[i] &&
-        !this.queue[i].audioUrl &&
+        !this.queue[i].rawWav &&
         !this.queue[i]._error
       ) {
         await new Promise((r) => setTimeout(r, 80));
@@ -457,7 +495,7 @@
         this.prefetch(idx + 1);
         this.prefetch(idx + 2);
 
-        if (!this.queue[idx].audioUrl) {
+        if (!this.queue[idx].rawWav) {
           this.setStatus(this.statusText || "synthesising…");
           await this.waitFor(idx);
         }
@@ -494,14 +532,21 @@
         const spans = blockWordSpans(block);
         const spansForBlock = spans.length > 0 ? spans : null;
 
-        const url = item.audioUrl;
+        // Pad now, against whichever speed is live right this instant — not
+        // whatever was set when this sentence was prefetched. The user can
+        // (and does) flip the speed slider several times before a queued
+        // sentence's turn comes up; padding at generation time would bake in
+        // a stale, possibly-too-small amount.
+        const speed = this.settings.speed;
+        const wav = padTrailingSilence(item.rawWav, padMsForSpeed(speed));
+        const blob = new Blob([wav], { type: "audio/wav" });
+        const url = URL.createObjectURL(blob);
         this.audio.src = url;
-        this.audio.playbackRate = this.settings.speed;
+        this.audio.playbackRate = speed;
         const finish = () => {
           this.clearWordHighlight();
           cancelAnimationFrame(this.wordRaf);
           URL.revokeObjectURL(url);
-          item.audioUrl = null;
           this.currentResolver = null;
           resolve();
         };
@@ -623,7 +668,7 @@
       // previous item.
       this.cursor = Math.max(0, this.cursor - 1);
       const item = this.queue[this.cursor];
-      if (item && !item.audioUrl) this.prefetch(this.cursor);
+      if (item && !item.rawWav) this.prefetch(this.cursor);
       this.audio.onended?.();
     }
 
@@ -635,11 +680,8 @@
       this.audio.src = "";
       cancelAnimationFrame(this.wordRaf);
       this.clearWordHighlight();
-      // Free any in-flight audio URLs that were already synthesised.
-      for (const item of this.queue) {
-        if (item.audioUrl) URL.revokeObjectURL(item.audioUrl);
-      }
-      // Break the play loop if it's waiting on playOne's onended.
+      // Break the play loop if it's waiting on playOne's onended — this also
+      // revokes the currently-playing blob URL via finish() (see playOne()).
       if (this.currentResolver) {
         const r = this.currentResolver;
         this.currentResolver = null;
