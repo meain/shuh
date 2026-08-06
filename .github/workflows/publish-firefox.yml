@@ -1,0 +1,31 @@
+name: Publish to Firefox Add-ons
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  publish-firefox:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build extension
+        run: make build
+
+      - name: Sign and publish to AMO
+        run: |
+          npx --yes web-ext@latest sign \
+            --source-dir=extension \
+            --api-key="${{ secrets.AMO_JWT_ISSUER }}" \
+            --api-secret="${{ secrets.AMO_JWT_SECRET }}" \
+            --channel=listed
