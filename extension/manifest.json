@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "shuh",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Read webpages out loud with on-device neural TTS (Piper).",
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": ["<all_urls>"],
