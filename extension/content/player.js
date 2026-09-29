@@ -210,6 +210,14 @@
       this.playing = false;
       this.destroyed = false;
       this.currentResolver = null;
+      // Identifies this player's requests to the background synth queue.
+      // `gen` is bumped on every next/prev so queued synths for the old
+      // position get dropped before they reach predict().
+      this.session = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+      this.gen = 0;
+      // Lookahead prefetching stays off until the first sentence is ready,
+      // so startup only has to wait for one synth.
+      this.warm = false;
       this.settings = { voice: "en_US-amy-low", speed: 1.0 };
       this.activeWordSpan = null;
       this.wordRaf = 0;
@@ -435,13 +443,11 @@
 
       this.cursor = 0;
       this.setStatus("warming up…");
-      send("warmup", {}).catch(() => {}); // best-effort
+      send("warmup", { voice: this.settings.voice }).catch(() => {}); // best-effort
 
-      // Pre-fetch the first chunk so playback can start without waiting on a
-      // round trip every time.
+      // Only the first sentence at startup — lookahead widens once it's
+      // ready to play (see playLoop), so nothing competes with it.
       this.prefetch(0);
-      this.prefetch(1);
-      this.prefetch(2);
 
       this.playing = true;
       this.playLoop();
@@ -454,15 +460,29 @@
     // playOne(), against whatever speed is active at the moment of playback
     // (see padTrailingSilence() below for why it has to happen there and
     // not here).
+    //
+    // Re-requests an item whose in-flight request is from an older gen (the
+    // background may have dropped it as stale), and re-sends the cursor's
+    // item as urgent if it was first requested as lookahead — the
+    // background dedupes by (session, idx), so neither duplicates work.
     prefetch(i) {
       if (this.destroyed) return;
       const item = this.queue[i];
-      if (!item || item.rawWav || item._fetching) return;
+      if (!item || item.rawWav) return;
+      const gen = this.gen;
+      const urgent = i === this.cursor;
+      if (item._fetching && item._fetchGen === gen && (item._urgent || !urgent)) return;
       item._fetching = true;
+      item._fetchGen = gen;
+      item._urgent = urgent;
       send("synth", {
         text: item.text,
         voice: this.settings.voice,
         speed: 1.0,
+        session: this.session,
+        gen,
+        idx: i,
+        urgent,
       })
         .then((res) => {
           if (this.destroyed) return;
@@ -471,7 +491,12 @@
           item._fetching = false;
         })
         .catch((err) => {
+          // A newer request for this item superseded this one.
+          if (item._fetchGen !== gen) return;
           item._fetching = false;
+          // Dropped by the background after a next/prev — not an error;
+          // whoever needs it next will re-request it.
+          if (err.message === "stale") return;
           item._error = err.message || String(err);
           if (!this.destroyed) console.error("[shuh] synth failed", err);
         });
@@ -485,6 +510,7 @@
         !this.queue[i].rawWav &&
         !this.queue[i]._error
       ) {
+        this.prefetch(i); // no-op unless its request was dropped
         await new Promise((r) => setTimeout(r, 80));
       }
     }
@@ -493,8 +519,10 @@
       while (!this.destroyed && this.cursor < this.queue.length) {
         const idx = this.cursor;
         this.prefetch(idx);
-        this.prefetch(idx + 1);
-        this.prefetch(idx + 2);
+        if (this.warm) {
+          this.prefetch(idx + 1);
+          this.prefetch(idx + 2);
+        }
 
         if (!this.queue[idx].rawWav) {
           this.setStatus(this.statusText || "synthesising…");
@@ -511,6 +539,12 @@
           continue;
         }
         this.setStatus("");
+        // First audio is about to play — widen to the normal lookahead.
+        if (!this.warm) {
+          this.warm = true;
+          this.prefetch(idx + 1);
+          this.prefetch(idx + 2);
+        }
         await this.playOne(idx);
         if (this.destroyed) return;
         if (this.cursor === idx) this.cursor += 1;
@@ -691,6 +725,11 @@
       const resolveCurrent = this.currentResolver;
       this.currentResolver = null;
       this.cursor = idx;
+      // Anything still queued for the old position is now stale: bump the
+      // gen and tell the background to drop it, so the new cursor's synth
+      // (sent right after, as urgent) doesn't wait behind it.
+      this.gen += 1;
+      send("cancel", { session: this.session, gen: this.gen }).catch(() => {});
       this.previewAt(idx);
       if (idx < this.queue.length) this.prefetch(idx);
       // If audio for the old position had already started (playOne was
@@ -731,7 +770,7 @@
       // generate() calls inside ORT can't be cancelled, but the background
       // can at least stop accepting new prefetches we don't care about.)
       chrome.runtime
-        .sendMessage({ target: "background", type: "cancel" })
+        .sendMessage({ target: "background", type: "cancel", payload: { session: this.session } })
         .catch(() => {});
     }
   }

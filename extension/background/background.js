@@ -3,6 +3,7 @@
 // pages have full DOM + WASM access, so no offscreen doc needed.
 
 import { predict, voices as fetchVoices, stored as listStored, download as prefetchVoice } from "../lib/tts.bundle.js";
+import { createSynthQueue } from "./synth-queue.js";
 
 const DEFAULT_VOICE = "en_US-amy-low";
 
@@ -21,51 +22,73 @@ async function getVoices() {
 
 // ── synthesis ────────────────────────────────────────────────────────────
 
-let warmupPromise = null;
-async function warmup(voiceId = DEFAULT_VOICE) {
-  if (!warmupPromise) {
-    console.log("[shuh] warming Piper voice:", voiceId);
-    warmupPromise = (async () => {
+// All predict() calls go through one serial queue so the sentence at the
+// player's cursor runs first and stale prefetches (from before a next/prev)
+// are dropped before they reach ORT. See synth-queue.js.
+const queue = createSynthQueue({ predict });
+
+// One shared download-if-missing promise per voice, so warmup and the first
+// synth (which arrive back to back) don't both start downloading it.
+const voiceReady = new Map();
+function ensureVoice(voiceId) {
+  let ready = voiceReady.get(voiceId);
+  if (!ready) {
+    ready = (async () => {
       const have = await listStored();
-      if (!have.includes(voiceId)) {
-        await prefetchVoice(voiceId, (p) => {
-          broadcastProgress({
-            file: voiceId,
-            progress: p.total > 0 ? Math.round((p.loaded / p.total) * 100) : 0,
-            loaded: p.loaded,
-            total: p.total,
-          });
+      if (have.includes(voiceId)) return;
+      await prefetchVoice(voiceId, (p) => {
+        broadcastProgress({
+          file: voiceId,
+          progress: p.total > 0 ? Math.round((p.loaded / p.total) * 100) : 0,
+          loaded: p.loaded,
+          total: p.total,
         });
-      }
-      // Run one tiny synth to load WASM into memory; the second call is fast.
-      await predict({ text: "shuh", voiceId });
+      });
       broadcastReady();
     })().catch((err) => {
-      warmupPromise = null;
+      voiceReady.delete(voiceId); // let the next request retry
+      throw err;
+    });
+    voiceReady.set(voiceId, ready);
+  }
+  return ready;
+}
+
+const warmups = new Map();
+async function warmup(voiceId = DEFAULT_VOICE) {
+  let p = warmups.get(voiceId);
+  if (!p) {
+    console.log("[shuh] warming Piper voice:", voiceId);
+    p = (async () => {
+      await ensureVoice(voiceId);
+      // Run one tiny synth to load WASM + the ONNX session into memory.
+      // Lowest priority: if a real sentence is already queued it goes first
+      // (and loads the session itself).
+      await queue.enqueue({ text: "shuh", voiceId, priority: "low" });
+      broadcastReady();
+    })().catch((err) => {
+      warmups.delete(voiceId);
       console.error("[shuh] warmup failed", err);
       broadcastError(String(err?.message || err));
       throw err;
     });
+    warmups.set(voiceId, p);
   }
-  return warmupPromise;
+  return p;
 }
 
-async function synth({ text, voice }) {
+async function synth({ text, voice, session, gen, idx, urgent }) {
   const voiceId = voice || DEFAULT_VOICE;
   // First call for an uncached voice triggers a download — surface progress.
-  const have = await listStored();
-  if (!have.includes(voiceId)) {
-    await prefetchVoice(voiceId, (p) => {
-      broadcastProgress({
-        file: voiceId,
-        progress: p.total > 0 ? Math.round((p.loaded / p.total) * 100) : 0,
-        loaded: p.loaded,
-        total: p.total,
-      });
-    });
-    broadcastReady();
-  }
-  const blob = await predict({ text, voiceId });
+  await ensureVoice(voiceId);
+  const blob = await queue.enqueue({
+    text,
+    voiceId,
+    session,
+    gen,
+    idx,
+    priority: urgent ? "urgent" : "normal",
+  });
   const wav = await blob.arrayBuffer();
   // vits-web encodes a bare WAV with zero trailing silence (44-byte header,
   // mono 16-bit PCM, data ends right on the last sample). The content
@@ -156,12 +179,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         await warmup(msg.payload?.voice);
         sendResponse({ ok: true });
       } else if (msg.type === "cancel") {
+        // With a gen: the player skipped — drop its queued work from older
+        // gens. Without: the player closed — drop all of its queued work.
+        const { session, gen } = msg.payload || {};
+        if (gen != null) queue.advance(session, gen);
+        else queue.cancelSession(session);
         sendResponse({ ok: true });
       } else {
         sendResponse({ ok: false, error: `unknown type: ${msg.type}` });
       }
     } catch (err) {
-      console.error("[shuh:bg]", err);
+      if (!err?.stale) console.error("[shuh:bg]", err);
       sendResponse({ ok: false, error: String(err?.message || err) });
     }
   })();
