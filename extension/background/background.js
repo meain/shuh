@@ -96,7 +96,7 @@ async function synth({ text, voice, session, gen, idx, urgent }) {
   // playback — see padTrailingSilence() in player.js — since the right
   // amount depends on whatever playback speed is active at that moment,
   // which can change after this response is cached.
-  return { wav, sampleRate: null, words: null };
+  return { wav, sampleRate: null };
 }
 
 async function listVoices() {

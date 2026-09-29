@@ -228,14 +228,6 @@
   transition: background 200ms ease;
 }
 
-/* Per-word highlight, when timestamps are available. */
-.shuh-word-active {
-  background: rgba(252, 211, 77, 0.45);
-  border-radius: 3px;
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
-}
-
 /* Drag handle visual affordance. */
 .shuh-grab { cursor: grab; opacity: 0.45; padding: 0 2px; }
 .shuh-grab:active { cursor: grabbing; }

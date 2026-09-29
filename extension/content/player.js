@@ -108,46 +108,6 @@
     return out;
   }
 
-  // ─── word-highlight DOM prep ───────────────────────────────────────────────
-
-  // Wrap each word of a block in a <span data-shuh-w> so we can highlight them
-  // individually when timestamps are available. Idempotent.
-  function prepareWordSpans(block) {
-    if (block.__shuhWrapped) return;
-    if (!block.parentNode) return; // synthetic selection block
-    const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, {
-      acceptNode: (n) =>
-        n.nodeValue.trim().length > 0 && !n.parentElement.closest(".shuh-root")
-          ? NodeFilter.FILTER_ACCEPT
-          : NodeFilter.FILTER_REJECT,
-    });
-    const textNodes = [];
-    let node;
-    while ((node = walker.nextNode())) textNodes.push(node);
-
-    for (const tn of textNodes) {
-      const frag = document.createDocumentFragment();
-      const parts = tn.nodeValue.split(/(\s+)/);
-      for (const p of parts) {
-        if (!p) continue;
-        if (/^\s+$/.test(p)) {
-          frag.appendChild(document.createTextNode(p));
-        } else {
-          const span = document.createElement("span");
-          span.dataset.shuhW = "1";
-          span.textContent = p;
-          frag.appendChild(span);
-        }
-      }
-      tn.parentNode.replaceChild(frag, tn);
-    }
-    block.__shuhWrapped = true;
-  }
-
-  function blockWordSpans(block) {
-    return Array.from(block.querySelectorAll("span[data-shuh-w]"));
-  }
-
   // ─── messaging to background ───────────────────────────────────────────────
 
   function send(type, payload) {
@@ -205,7 +165,7 @@
       // browsers default this to true, but be explicit.
       this.audio.preservesPitch = true;
       this.blocks = [];          // host-page elements being read
-      this.queue = [];           // { blockIdx, text, audioUrl?, words? }
+      this.queue = [];           // { blockIdx, text, rawWav? }
       this.cursor = 0;
       this.playing = false;
       this.destroyed = false;
@@ -219,8 +179,6 @@
       // so startup only has to wait for one synth.
       this.warm = false;
       this.settings = { voice: "en_US-amy-low", speed: 1.0 };
-      this.activeWordSpan = null;
-      this.wordRaf = 0;
       this.statusText = "";
       // Slider range/step — 0.5× to 4× in 0.5 increments.
       this.speedMin = 0.5;
@@ -487,7 +445,6 @@
         .then((res) => {
           if (this.destroyed) return;
           item.rawWav = res.wav;
-          item.words = res.words;
           item._fetching = false;
         })
         .catch((err) => {
@@ -572,15 +529,8 @@
     playOne(idx) {
       return new Promise((resolve) => {
         const item = this.queue[idx];
-        const block = this.blocks[item.blockIdx];
 
         this.previewAt(idx);
-
-        // Per-word highlighting setup (only if we have word timings and the
-        // block lives in the host page — selection-mode blocks are synthetic).
-        prepareWordSpans(block);
-        const spans = blockWordSpans(block);
-        const spansForBlock = spans.length > 0 ? spans : null;
 
         // Pad now, against whichever speed is live right this instant — not
         // whatever was set when this sentence was prefetched. The user can
@@ -594,8 +544,6 @@
         this.audio.src = url;
         this.audio.playbackRate = speed;
         const finish = () => {
-          this.clearWordHighlight();
-          cancelAnimationFrame(this.wordRaf);
           URL.revokeObjectURL(url);
           this.currentResolver = null;
           resolve();
@@ -603,56 +551,7 @@
         this.currentResolver = finish;
         this.audio.onended = finish;
         if (this.playing) this.audio.play().catch(() => {});
-
-        if (item.words && spansForBlock) {
-          this.scheduleWordHighlight(item, spansForBlock);
-        }
       });
-    }
-
-    scheduleWordHighlight(item, blockSpans) {
-      // Find where in the block this sentence's words start, by matching the
-      // first few timed words against the block's wrapped spans.
-      const firstWord = item.words[0]?.word?.toLowerCase().replace(/[^a-z']/g, "");
-      let offset = 0;
-      if (firstWord) {
-        for (let i = 0; i < blockSpans.length; i++) {
-          if (blockSpans[i].textContent.toLowerCase().replace(/[^a-z']/g, "") === firstWord) {
-            offset = i;
-            break;
-          }
-        }
-      }
-
-      const step = () => {
-        const t = this.audio.currentTime;
-        let activeIdx = -1;
-        for (let i = 0; i < item.words.length; i++) {
-          if (t >= item.words[i].start && t < item.words[i].end) {
-            activeIdx = i;
-            break;
-          }
-        }
-        if (activeIdx >= 0) {
-          const span = blockSpans[offset + activeIdx];
-          if (span && span !== this.activeWordSpan) {
-            this.activeWordSpan?.classList.remove("shuh-word-active");
-            span.classList.add("shuh-word-active");
-            this.activeWordSpan = span;
-          }
-        }
-        if (!this.audio.paused && !this.audio.ended) {
-          this.wordRaf = requestAnimationFrame(step);
-        }
-      };
-      this.wordRaf = requestAnimationFrame(step);
-    }
-
-    clearWordHighlight() {
-      if (this.activeWordSpan) {
-        this.activeWordSpan.classList.remove("shuh-word-active");
-        this.activeWordSpan = null;
-      }
     }
 
     highlightBlock(block) {
@@ -718,8 +617,6 @@
     // then prioritising that item's synthesis. The UI (highlight/line/
     // progress) updates right away regardless of load state.
     skipTo(idx) {
-      cancelAnimationFrame(this.wordRaf);
-      this.clearWordHighlight();
       this.audio.pause();
       this.audio.onended = null;
       const resolveCurrent = this.currentResolver;
@@ -746,8 +643,6 @@
       this.audio.onended = null;
       this.audio.pause();
       this.audio.src = "";
-      cancelAnimationFrame(this.wordRaf);
-      this.clearWordHighlight();
       // Break the play loop if it's waiting on playOne's onended — this also
       // revokes the currently-playing blob URL via finish() (see playOne()).
       if (this.currentResolver) {
